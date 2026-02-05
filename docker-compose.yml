@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:15
+    container_name: autoria_db_container
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: autoria_redis
+    # to avoid non-critical Redis warning about vm.overcommit_memory
+    command: sh -c "redis-server --loglevel warning 2>&1 | grep -v 'WARNING Memory overcommit'"
+
+  app:
+    build: .
+    container_name: autoria_app_container
+    depends_on:
+      - db
+      - redis
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+
+  worker:
+    build: .
+    container_name: autoria_worker
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      - DB_HOST=db
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+      - RQ_REDIS_URL=redis://redis:6379
+    volumes:
+      - .:/app
+      - ./dumps:/app/dumps
+    depends_on:
+      - redis
+      - db
+
+  scheduler:
+    build: .
+    container_name: autoria_scheduler
+    command: rqscheduler --host redis --port 6379 --db 0
+    depends_on:
+      - redis
+    env_file: .env
+
+volumes:
+  postgres_data:

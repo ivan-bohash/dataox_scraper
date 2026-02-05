@@ -1,0 +1,10 @@
+.env
+.python-version
+
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+dumps/*.sql
