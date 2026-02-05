@@ -11,22 +11,28 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     container_name: autoria_redis
-    # to avoid non-critical Redis warning about vm.overcommit_memory
-    command: sh -c "redis-server --loglevel warning 2>&1 | grep -v 'WARNING Memory overcommit'"
+    command: sh -c "redis-server --loglevel warning"
 
   app:
     build: .
     container_name: autoria_app_container
-    depends_on:
-      - db
-      - redis
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   worker:
     build: .
@@ -41,15 +47,20 @@ services:
       - .:/app
       - ./dumps:/app/dumps
     depends_on:
-      - redis
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   scheduler:
     build: .
     container_name: autoria_scheduler
+    environment:
+      - PYTHONPATH=/app
     command: rqscheduler --host redis --port 6379 --db 0
     depends_on:
-      - redis
+      redis:
+        condition: service_started
     env_file: .env
 
 volumes:
